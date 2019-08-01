@@ -1,0 +1,50 @@
+#!/usr/bin/env ruby
+
+require 'namecheap_api'
+
+class EmailAlias
+  
+  def initialize
+    @domain = 'armandofox.com'
+    @forward_to = 'armandofox@gmail.com'
+    @config = {
+      sandbox: true,
+      client_ip: 'xxx.xxx.xxx.xxx',
+      api_username: '<insert username>',
+      username: '<insert password>',
+      api_key: '<insert api key>'
+    }
+    @client = NamecheapApi::Client.new(config)
+  end
+  
+  def create(alias_name)
+    response = @client.call('namecheap.domains.dns.setEmailForwarding',
+      params.merge({ForwardTo: @forward_to}))
+    if response.select { |resp| resp[:error_no] != '0' }
+      # something bad happened
+      raise resp.description
+    end
+  end
+
+  def delete(alias)
+    response = @client.call('namecheap.domains.dns.setEmailForwarding',
+      params.merge({ForwardTo: ''}))
+    if response.select { |resp| resp[:error_no] != '0' }
+      # something bad happened
+      raise resp.description
+    end
+  end
+
+  private
+
+  def params
+    params = {
+      DomainName: @domain,
+      MailBox: "#{alias_name}@#{@domain}",
+    }
+  end
+end
+
+command = ARGV[0]
+alias_name = ARGV
+EmailAlias.new.send(command, alias_name)
