@@ -1,50 +1,56 @@
 #!/usr/bin/env ruby
 
 require 'namecheap_api'
+require 'byebug'
 
 class EmailAlias
   
-  def initialize
-    @domain = 'armandofox.com'
+  def initialize(alias_name)
+    # @domain = 'armandofox.com'
+    @domain = 'foxinthehenhouse.biz'
     @forward_to = 'armandofox@gmail.com'
     @config = {
-      sandbox: true,
-      client_ip: 'xxx.xxx.xxx.xxx',
-      api_username: '<insert username>',
-      username: '<insert password>',
-      api_key: '<insert api key>'
+      sandbox: false,
+      client_ip: '52.119.127.64', # a whitelisted IP
+      api_username: 'armandofox', # namecheap username
+      username: 'armandofoxx', # namecheap PW
+      api_key: 'cf0ec78860d049a6bc1f457be9a58da9',
+      alias_name: alias_name
     }
-    @client = NamecheapApi::Client.new(config)
-  end
-  
-  def create(alias_name)
-    response = @client.call('namecheap.domains.dns.setEmailForwarding',
-      params.merge({ForwardTo: @forward_to}))
-    if response.select { |resp| resp[:error_no] != '0' }
-      # something bad happened
-      raise resp.description
-    end
+    @client = NamecheapApi::Client.new(@config)
   end
 
-  def delete(alias)
-    response = @client.call('namecheap.domains.dns.setEmailForwarding',
-      params.merge({ForwardTo: ''}))
-    if response.select { |resp| resp[:error_no] != '0' }
-      # something bad happened
-      raise resp.description
-    end
+  def get
+    response = call_api('namecheap.domains.dns.getEmailForwarding', :get, {DomainName: @domain})
+    puts results.response
+  end
+  
+  def create
+    response = call_api('namecheap.domains.dns.setEmailForwarding', :post, params.merge({ForwardTo: @forward_to}))
+  end
+
+  def delete
+    response = call_api('namecheap.domains.dns.setEmailForwarding', :post, params.merge({ForwardTo: ''}))
   end
 
   private
 
+  def call_api(*args)
+    resp = @client.call(*args)
+    byebug
+    if (bad_response = resp.results.select { |r| r[:error_no].to_i != 0 })
+      raise RuntimeError.new(bad_response.description)
+    end
+    resp
+  end
+
   def params
     params = {
       DomainName: @domain,
-      MailBox: "#{alias_name}@#{@domain}",
+      MailBox: "#{@config[:alias_name]}@#{@domain}",
     }
   end
 end
 
 command = ARGV[0]
-alias_name = ARGV
-EmailAlias.new.send(command, alias_name)
+EmailAlias.new(ARGV).send(command)
