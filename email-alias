@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 
-require 'namecheap_api'
-require 'byebug'
+require 'bundler'
+Bundler.require(:default)
 
 class EmailAlias
   
@@ -13,33 +13,44 @@ class EmailAlias
       sandbox: false,
       client_ip: '52.119.127.64', # a whitelisted IP
       api_username: 'armandofox', # namecheap username
-      username: 'armandofoxx', # namecheap PW
+      username: 'armandofox', # namecheap PW
       api_key: 'cf0ec78860d049a6bc1f457be9a58da9',
-      alias_name: alias_name
     }
+    @alias_name = alias_name
     @client = NamecheapApi::Client.new(@config)
   end
 
   def get
-    response = call_api('namecheap.domains.dns.getEmailForwarding', :get, {DomainName: @domain})
-    puts results.response
+    response = call_api('namecheap.domains.dns.getEmailForwarding', {DomainName: @domain})
+    results = []
+    response.doc.css("Forward").each do |elt|
+      results.push('MailBox' => elt["mailbox"], 'ForwardTo' => elt.children[0].text)
+    end
+    results
   end
   
   def create
-    response = call_api('namecheap.domains.dns.setEmailForwarding', :post, params.merge({ForwardTo: @forward_to}))
+    existing_aliases = self.get
+    existing_aliases.push({'MailBox' => @alias_name, 'ForwardTo' => @forward_to})
+    new_aliases = {
+      'MailBox'   => existing_aliases.map { |a| a['MailBox'] },
+      'ForwardTo' => existing_aliases.map { |a| a['ForwardTo'] }
+    }
+    args = { DomainName: @domain }.merge(new_aliases)
+    byebug
+    response = call_api('namecheap.domains.dns.setEmailForwarding', args)
   end
 
   def delete
-    response = call_api('namecheap.domains.dns.setEmailForwarding', :post, params.merge({ForwardTo: ''}))
+    response = call_api('namecheap.domains.dns.setEmailForwarding', params.merge({ForwardTo: ''}))
   end
 
   private
 
-  def call_api(*args)
-    resp = @client.call(*args)
-    byebug
-    if (bad_response = resp.results.select { |r| r[:error_no].to_i != 0 })
-      raise RuntimeError.new(bad_response.description)
+  def call_api(cmd, args)
+    resp = @client.call(cmd, args)
+    if ((resp.docs.css("Error")[0]["Number"] != '0') rescue nil)
+      raise RuntimeError.new(resp.doc.css("Error")[0].children[0].text)
     end
     resp
   end
@@ -47,10 +58,10 @@ class EmailAlias
   def params
     params = {
       DomainName: @domain,
-      MailBox: "#{@config[:alias_name]}@#{@domain}",
+      MailBox: "#{@alias_name}@#{@domain}"
     }
   end
 end
 
 command = ARGV[0]
-EmailAlias.new(ARGV).send(command)
+EmailAlias.new(ARGV[1]).send(command)
