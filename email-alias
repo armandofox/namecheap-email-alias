@@ -6,8 +6,7 @@ Bundler.require(:default)
 class EmailAlias
   
   def initialize(alias_name)
-    # @domain = 'armandofox.com'
-    @domain = 'foxinthehenhouse.biz'
+    @domain = 'armandofox.com'
     @forward_to = 'armandofox@gmail.com'
     @config = {
       sandbox: false,
@@ -20,6 +19,19 @@ class EmailAlias
     @client = NamecheapApi::Client.new(@config)
   end
 
+  private
+
+  def argumentize_aliases(alis)
+    args = {}
+    alis.each_with_index do |ali,i|
+      args["MailBox#{i+1}"] = ali["MailBox"]
+      args["ForwardTo#{i+1}"] = ali["ForwardTo"]
+    end
+    args
+  end
+  
+  public
+  
   def get
     response = call_api('namecheap.domains.dns.getEmailForwarding', {DomainName: @domain})
     results = []
@@ -32,17 +44,15 @@ class EmailAlias
   def create
     existing_aliases = self.get
     existing_aliases.push({'MailBox' => @alias_name, 'ForwardTo' => @forward_to})
-    new_aliases = {
-      'MailBox'   => existing_aliases.map { |a| a['MailBox'] },
-      'ForwardTo' => existing_aliases.map { |a| a['ForwardTo'] }
-    }
-    args = { DomainName: @domain }.merge(new_aliases)
-    byebug
+    args = { "DomainName" => @domain }.merge(argumentize_aliases(existing_aliases))
     response = call_api('namecheap.domains.dns.setEmailForwarding', args)
   end
 
   def delete
-    response = call_api('namecheap.domains.dns.setEmailForwarding', params.merge({ForwardTo: ''}))
+    existing_aliases = self.get
+    existing_aliases = existing_aliases.delete_if { |ali| ali['MailBox'] == @alias_name }
+    args = { "DomainName" => @domain }.merge(argumentize_aliases(existing_aliases))
+    response = call_api('namecheap.domains.dns.setEmailForwarding', args)
   end
 
   private
@@ -53,13 +63,6 @@ class EmailAlias
       raise RuntimeError.new(resp.doc.css("Error")[0].children[0].text)
     end
     resp
-  end
-
-  def params
-    params = {
-      DomainName: @domain,
-      MailBox: "#{@alias_name}@#{@domain}"
-    }
   end
 end
 
