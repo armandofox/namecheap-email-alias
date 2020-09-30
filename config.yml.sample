@@ -1,0 +1,7 @@
+domain: yourdomain.com
+forward_to: forwarding-target@somewhere.com
+sandbox: false
+client_ip: '99.99.99.99' # a whitelisted IP
+api_username: 'your-api-username' 
+username: 'your-namecheap-username'
+api_key: 'your-namecheap-api-key'

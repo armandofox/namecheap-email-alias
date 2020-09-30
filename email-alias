@@ -5,17 +5,13 @@ Bundler.require(:default)
 
 class EmailAlias
   
-  def initialize(alias_name)
-    @domain = 'armandofox.com'
-    @forward_to = 'armandofox@gmail.com'
-    @config = {
-      sandbox: false,
-      client_ip: '52.119.127.64', # a whitelisted IP
-      api_username: 'armandofox', # namecheap username
-      username: 'armandofox', # namecheap PW
-      api_key: 'cf0ec78860d049a6bc1f457be9a58da9',
-    }
-    @alias_name = alias_name
+  def initialize(args)
+    @command = args.shift
+    @alias_name = args.shift
+    @args = args
+    @config = YAML.load_file("#{File.dirname(__FILE__)}/config.yml").each_with_object({}) { |(k,v),memo| memo[k.to_sym] = v }
+    @domain = @config.delete(:domain)
+    @forward_to = @config.delete(:forward_to)
     @client = NamecheapApi::Client.new(@config)
   end
 
@@ -31,6 +27,10 @@ class EmailAlias
   end
   
   public
+
+  def go!
+    self.send(@command)
+  end
   
   def get
     response = call_api('namecheap.domains.dns.getEmailForwarding', {DomainName: @domain})
@@ -38,20 +38,22 @@ class EmailAlias
     response.doc.css("Forward").each do |elt|
       results.push('MailBox' => elt["mailbox"], 'ForwardTo' => elt.children[0].text)
     end
+    puts results if @command == 'get'
     results
   end
   
   def create
     existing_aliases = self.get
-    existing_aliases.push({'MailBox' => @alias_name, 'ForwardTo' => @forward_to})
-    args = { "DomainName" => @domain }.merge(argumentize_aliases(existing_aliases))
+    forward_to = @args[0] || @forward_to
+    existing_aliases.push({'MailBox' => @alias_name, 'ForwardTo' => forward_to})
+    args = { DomainName: @domain }.merge(argumentize_aliases(existing_aliases))
     response = call_api('namecheap.domains.dns.setEmailForwarding', args)
   end
 
   def delete
     existing_aliases = self.get
     existing_aliases = existing_aliases.delete_if { |ali| ali['MailBox'] == @alias_name }
-    args = { "DomainName" => @domain }.merge(argumentize_aliases(existing_aliases))
+    args = { DomainName: @domain }.merge(argumentize_aliases(existing_aliases))
     response = call_api('namecheap.domains.dns.setEmailForwarding', args)
   end
 
@@ -59,12 +61,18 @@ class EmailAlias
 
   def call_api(cmd, args)
     resp = @client.call(cmd, args)
-    if ((resp.docs.css("Error")[0]["Number"] != '0') rescue nil)
-      raise RuntimeError.new(resp.doc.css("Error")[0].children[0].text)
+    unless (err = resp.doc.css("Errors Error")).empty?
+      raise RuntimeError.new(err.text)
     end
     resp
   end
 end
 
-command = ARGV[0]
-EmailAlias.new(ARGV[1]).send(command)
+unless ARGV.length > 0
+  STDERR.puts <<EOHELP or exit
+Usage: #{$0} get
+       #{$0} create aliasname [forwarder]  # defaults to forward_to in config.yml
+       #{$0} delete aliasname
+EOHELP
+end
+EmailAlias.new(ARGV).go!
